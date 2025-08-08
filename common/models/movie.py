@@ -8,7 +8,7 @@ class Movie(Base):
     __tablename__ = "movies"
 
     id: Mapped[int] = mapped_column(Integer, Identity(start=1, increment=1), primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(45))
+    name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(255))
     release_year: Mapped[int] = mapped_column()
     rating: Mapped[float] = mapped_column()

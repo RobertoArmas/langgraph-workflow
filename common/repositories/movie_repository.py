@@ -46,8 +46,9 @@ class MovieRepository:
         session.commit()
         session.close()
 
-    def create(self, movie: Movie):
+    def create(self, movieData: dict):
         session = self.db.get_session()
+        movie = Movie(**movieData)  # Convert dict to Movie instance
         session.add(movie)
         session.commit()
         session.close()

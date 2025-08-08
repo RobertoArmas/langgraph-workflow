@@ -3,6 +3,9 @@ from __future__ import annotations
 from langchain_core.messages import SystemMessage, AIMessage, ChatMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import tools_condition, ToolNode
+from langchain_core.runnables.config import RunnableConfig
+from langgraph.store.base import BaseStore
+
 """LangGraph workflow for a conversational "Movie Assistant".
 
 *Updated to plug in Roberto’s **real** tools:*
@@ -65,15 +68,16 @@ def update_price(movie_id: int, new_price: float) -> str:
         repo.save(movie)
     return str(movie)
 
-def insert_movie(movie_data: Dict[str, Any]) -> int:
+def insert_movie(movie_data: dict) -> int:
     """Insert a movie.
 
-    Strategy:
-    1. Look up by *name*.
-    2. If exists → update fields & save.
-    3. Else → create a new row.
-    Returns the DB primary‑key id.
+    Arguments:
+        movie_data: Movie data as a dict.
+
+    Returns:
+        The ID of the inserted movie.
     """
+    print(f"Insert movie with data: {movie_data}")
     repo = MovieRepository()
     name = movie_data.get("name")
     if name:
@@ -84,24 +88,9 @@ def insert_movie(movie_data: Dict[str, Any]) -> int:
     else:
         existing = None
 
-    if existing:
-        for k, v in movie_data.items():
-            setattr(existing, k, v)
-        if hasattr(repo, "save"):
-            repo.save(existing)
-        else:
-            raise AttributeError("MovieRepository lacks a 'save' method for update.")
-        return existing.id
 
-    # --- create path ---
-    movie = Movie(**movie_data)
-    if hasattr(repo, "create"):
-        repo.create(movie)
-    elif hasattr(repo, "save"):
-        repo.save(movie)
-    else:
-        raise AttributeError("MovieRepository lacks 'create' or 'save'.")
-    return movie.id
+    repo.create(movie_data)
+    
 
 
 # ---------------------------------------------------------------------------
@@ -148,20 +137,93 @@ class MovieState(MessagesState):
 # Nodes ---------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
-def assistant(state: MovieState) -> MovieState:
+def assistant(state: MovieState, config: RunnableConfig, store: BaseStore) -> MovieState:
     """Determine intent from user_input and orchestrate flow."""
+    # Get configuration
+    configurable = configuration.Configuration.from_runnable_config(config)
+    
+    # Get the user ID from the config
+    user_id = configurable.user_id
+
+    # Retrieve memory from the store
+    namespace = ("memory", user_id)
+    key = "user_memory"
+    existing_memory = store.get(namespace, key)
+
+    # Extract the memory
+    if existing_memory:
+        # Value is a dictionary with a memory key
+        existing_memory_content = existing_memory.value.get('memory')
+    else:
+        existing_memory_content = "No existing memory found."
+
+    # Chatbot instruction
+    MODEL_SYSTEM_MESSAGE = """You are a helpful assistant with memory that provides information about movies. 
+    If you have memory for this user, use it to personalize your responses.
+    You can search for movies, list them, and also search online for movie information.
+    Here is the memory (it may be empty): {memory}"""
+
     sys_message = SystemMessage(
-        content="You are a helpful movie assistant. "
-                "You can search for movies, list them, and also search online for movie information."
-    )   
+        content=MODEL_SYSTEM_MESSAGE.format(memory=existing_memory_content)
+    ) 
+
     state["messages"] = [llm_with_tools.invoke([sys_message] + state["messages"])]
 
-    # Human in the loop for get user input
-    if not state.get("user_input"):
-        # If no user input, return the state to wait for it
-        return state
-
     return state
+
+CREATE_MEMORY_INSTRUCTION = """"You are collecting information about the user to personalize your responses.
+
+CURRENT USER INFORMATION:
+{memory}
+
+INSTRUCTIONS:
+1. Review the chat history below carefully
+2. Identify new information about the user, such as:
+   - Personal details (name, location)
+   - Preferences (likes, dislikes)
+   - Interests and hobbies
+   - Past experiences
+   - Goals or future plans
+3. Merge any new information with existing memory
+4. Format the memory as a clear, bulleted list
+5. If new information conflicts with existing memory, keep the most recent version
+
+Remember: Only include factual information directly stated by the user. Do not make assumptions or inferences.
+
+Based on the chat history below, please update the user information:"""
+
+def write_memory(state: MovieState, config: RunnableConfig, store: BaseStore):
+
+    """Reflect on the chat history and save a memory to the store."""
+    if isinstance(state, dict) and state.get("messages"):
+        last_message = state["messages"][-1]
+        if hasattr(last_message, "additional_kwargs") and hasattr(last_message.additional_kwargs, "tool_calls") and len(last_message.additional_kwargs["tool_calls"]) > 0:
+            return state
+    # Get configuration
+    configurable = configuration.Configuration.from_runnable_config(config)
+
+    # Get the user ID from the config
+    user_id = configurable.user_id
+
+    # Retrieve existing memory from the store
+    namespace = ("memory", user_id)
+    existing_memory = store.get(namespace, "user_memory")
+
+    # Extract the memory
+    if existing_memory:
+        # Value is a dictionary with a memory key
+        existing_memory_content = existing_memory.value.get('memory')
+    else:
+        existing_memory_content = "No existing memory found."
+        
+    # Format the memory in the system prompt
+    system_msg = CREATE_MEMORY_INSTRUCTION.format(memory=existing_memory_content)
+    new_memory = llm_with_tools.invoke([SystemMessage(content=system_msg)]+state['messages'])
+
+    # Overwrite the existing memory in the store 
+    key = "user_memory"
+    store.put(namespace, key, {"memory": new_memory.content})
+
 
 def show_options(state: MovieState) -> MovieState:
     """Show available options to the user."""
@@ -205,9 +267,12 @@ def insert_db(state: MovieState) -> MovieState:
     if state["movie_obj"] is None:
         raise ValueError("No movie object to insert into the database.")
     movie = state["movie_obj"]
-    if not isinstance(movie, Movie):
-        movie = Movie(**movie)
-    row_id = insert_movie(movie.__dict__)
+    # Always convert to dict for insert_movie
+    if isinstance(movie, Movie):
+        movie_data = movie.__dict__
+    else:
+        movie_data = dict(movie)
+    row_id = insert_movie(movie_data)
     state["db_row_id"] = row_id
     return state
 
@@ -219,12 +284,16 @@ def insert_db(state: MovieState) -> MovieState:
 def smart_condition(
     state: Union[list[Any], dict[str, Any]],
     messages_key: str = "messages",
-) -> Literal["tools", END]:
+) -> Literal["tools", "write_memory", END]:
     next_state = tools_condition(state, messages_key)
     if next_state == "tools":
         return "tools"
-    
-    return END
+    # last message if last message if tool call then return END
+    if isinstance(state, dict) and state.get("messages"):
+            last_message = state["messages"][-1]
+            if hasattr(last_message, "additional_kwargs") and hasattr(last_message.additional_kwargs, "tool_calls") and len(last_message.additional_kwargs["tool_calls"]) > 0:
+                return END
+    return "write_memory"
 
 def is_approved(state: MovieState) -> Literal["insert", "search"]:
     if( state.get("approved") is None ):
@@ -239,30 +308,17 @@ import configuration
 workflow = StateGraph(MovieState, config_schema=configuration.Configuration)
 
 # Define a new graph
-assistant_node = workflow.add_node("assistant", assistant)
-search_node    = workflow.add_node("search", run_search)
-build_node     = workflow.add_node("build", build_movie_obj)
-confirm_node   = workflow.add_node("confirm", confirm_with_user)
-insert_node    = workflow.add_node("insert", insert_db)
-
+workflow.add_node("assistant", assistant)
+workflow.add_node("write_memory", write_memory)
 workflow.add_node("tools", ToolNode(tools))
-
 # Set the entrypoint as conversation
 # Define entrypoint: START ➜ assistant
 workflow.add_edge(START, "assistant")
 
 workflow.add_conditional_edges("assistant", smart_condition)
 workflow.add_edge("tools", "assistant")
-workflow.add_edge("search", "build")
-workflow.add_edge("build", "confirm")
-
-
-
-workflow.add_conditional_edges("confirm", is_approved)
-
-workflow.add_edge("insert", END)
 
 
 # Compile
-graph = workflow.compile()
 
+graph = workflow.compile()
