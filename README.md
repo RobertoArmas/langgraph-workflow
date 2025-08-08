@@ -23,6 +23,12 @@ The project is organized into several key folders:
 
 This modular structure separates concerns, making the codebase easier to maintain and extend. The agent interacts with the database through the repository pattern, migrations ensure the database schema is up to date, and seeds provide initial data for development or testing.
 
+The following diagram illustrates the high-level architecture:
+
+<p align="center">
+    <img src="docs/images/langgraph-workflow.png" alt="Architecture Diagram" width="400">
+</p>
+
 ## Configuration
 
 To configure the project environment variables:
