@@ -1,10 +1,9 @@
-
 # LangGraph Agent Movie Manager
-
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)
 ![LangChain](https://img.shields.io/badge/LangChain-Enabled-brightgreen?logo=data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjMDA4YjY4IiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxNnB4IiBoZWlnaHQ9IjE2cHgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bTAgMThjLTQuNDIgMC04LTMuNTgtOC04czMuNTgtOCA4LTggOCAzLjU4IDggOC0zLjU4IDgtOCA4eiIvPjwvc3ZnPg==)
 ![LangGraph](https://img.shields.io/badge/LangGraph-Enabled-blueviolet)
+![MIT License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## Description
 
@@ -102,8 +101,6 @@ To start the LangGraph Studio for interactive development and testing:
    ```
 
 ## License
-
-![MIT License](https://img.shields.io/badge/License-MIT-green.svg)
 
 This project is built for educational purposes as part of the Maestría de Inteligencia Aplicada at Universidad de las Américas (UDLA). It is intended for learning, research, and academic use only, and was not designed for production environments.
 
