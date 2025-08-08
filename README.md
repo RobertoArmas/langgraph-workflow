@@ -23,10 +23,10 @@ The project is organized into several key folders:
 
 This modular structure separates concerns, making the codebase easier to maintain and extend. The agent interacts with the database through the repository pattern, migrations ensure the database schema is up to date, and seeds provide initial data for development or testing.
 
-The following diagram illustrates the high-level architecture:
+The following diagram illustrates the high-level LangGraph Agent Movie Manager workflow:
 
 <p align="center">
-    <img src="docs/images/langgraph-workflow.png" alt="Architecture Diagram" width="400">
+    <img src="docs/images/langgraph-workflow.png" alt="LangGraph Workflow Diagram" width="400">
 </p>
 
 ## Configuration
