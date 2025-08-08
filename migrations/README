@@ -1,1 +1,7 @@
 Generic single-database configuration.
+
+Create migrations
+
+```bash
+ uv run alembic revision --autogenerate -m "create movies"
+```
